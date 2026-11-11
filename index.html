@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Explícale a Lalo</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#4a3fd0">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Lalo">
+<style>
+:root{--bg:#ecebf4;--ink:#181533;--mut:#5b5878;--card:#fff;--line:#d3d0e4;--acc:#4a3fd0;--on:#fff;--ok:#1f8a5b;--kid:#fff3c9;--kidink:#3a2f00;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root{--bg:#12102a;--ink:#ecebff;--mut:#a6a3c9;--card:#1b1940;--line:#353163;--acc:#9d93ff;--on:#12102a;--ok:#5cc58a;--kid:#4a3f12;--kidink:#fff3c9}}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:640px;margin:0 auto;padding:18px 16px 28px}
+h1{font:700 26px/1.15 system-ui,sans-serif;margin:6px 0 6px}
+p{margin:0 0 14px;color:var(--mut)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin:12px 0}
+input[type=text],input[type=password],textarea{width:100%;font:inherit;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+textarea{min-height:110px;resize:vertical}
+button{font:inherit;color:inherit;padding:10px 18px;border-radius:999px;border:1px solid var(--line);background:var(--card);cursor:pointer}
+button.p{background:var(--acc);color:var(--on);border-color:var(--acc);font-weight:600}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+#log{display:flex;flex-direction:column;gap:10px;max-height:52vh;overflow-y:auto;padding:2px}
+.m{max-width:88%;padding:10px 14px;border-radius:16px;white-space:pre-wrap;overflow-wrap:anywhere}
+.m b{display:block;font-size:13px;opacity:.7}
+.a{align-self:flex-end;background:var(--acc);color:var(--on)}
+.k{align-self:flex-start;background:var(--kid);color:var(--kidink)}
+.meter{height:12px;border-radius:6px;background:var(--line);overflow:hidden;margin:6px 0}.meter i{display:block;height:100%;width:0;background:var(--ok);transition:width .4s}
+#stuck,#err,.sm{font-size:15px;color:var(--mut)}#err{color:#c0392b}
+#fb p{margin:0 0 10px;color:var(--ink)}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:reduce){.meter i{transition:none}}
+</style>
+</head>
+<body>
+<main>
+<h1>Explícale a Lalo</h1>
+<p>Lalo tiene 10 años y no sabe nada de tu tema. Explícaselo con tus palabras hasta que lo entienda. Si no puedes hacerlo simple, todavía no lo dominas.</p>
+
+<div class="card" id="kc" hidden>
+<label for="ky"><b>Clave de la API de Claude</b></label>
+<p class="sm" style="margin:6px 0 8px">Se guarda solo en este dispositivo y se usa únicamente para hablar con Claude. Cada respuesta de Lalo se cobra a tu cuenta de la API.</p>
+<input type="password" id="ky" placeholder="sk-ant-…" autocomplete="off">
+<div class="row"><button class="p" id="ks">Guardar clave</button></div>
+</div>
+
+<div class="card" id="setup">
+<label for="tp"><b>¿Qué tema le vas a explicar?</b></label>
+<input type="text" id="tp" maxlength="120" placeholder="Por ejemplo: la fotosíntesis" style="margin-top:8px">
+<div class="row"><button class="p" id="go">Empezar</button></div>
+</div>
+
+<div id="chat" hidden>
+<div class="card">
+<div id="log" aria-live="polite"></div>
+<div class="meter" role="progressbar" aria-label="Qué tanto entiende Lalo" aria-valuemin="0" aria-valuemax="100"><i id="mt"></i></div>
+<div id="stuck">Lalo entiende: 0%</div>
+</div>
+<div class="card">
+<textarea id="in" placeholder="Escribe tu explicación con tus palabras…" aria-label="Tu explicación"></textarea>
+<div class="row"><button class="p" id="sd">Enviar</button><button id="mic" hidden>Dictar con voz</button></div>
+<div id="err" hidden></div>
+</div>
+<div class="row"><button id="fin">Terminar y ver cómo lo hice</button><button id="nw">Otro tema</button></div>
+<div class="card" id="fb" hidden></div>
+</div>
+
+<div class="card" id="ic"><b>Instalar como app</b>
+<div class="row"><button class="p" id="in2">Instalar app</button><button id="kx" hidden>Cambiar clave</button></div>
+<div id="ih" class="sm" hidden></div></div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const M_KID="claude-haiku-5-5",M_FB="claude-sonnet-5-5";
+let KEY="";try{KEY=localStorage.getItem("lalo_key")||""}catch(e){}
+let topic="",log=[],busy=false,und=0,stuck="";
+
+const KID=t=>`Eres Lalo, un niño de 10 años de primaria. Un adulto te va a explicar el tema “${t}” con sus propias palabras. Tú NO sabes nada de ese tema.
+Reglas:
+- Habla como un niño de 10 años: frases cortas, palabras sencillas, curioso y amable, sin exagerar.
+- Solo sabes lo que el adulto te dijo en esta conversación y lo que un niño de 10 años sabe de la vida diaria. No aportes datos nuevos del tema ni corrijas al adulto.
+- Si usa una palabra difícil o un término técnico, pregunta qué significa. Si algo es confuso, dilo con honestidad. Si dos cosas se contradicen, pregúntalo.
+- No finjas que entendiste. Si entiendes, di con tus palabras lo que entendiste, a veces con un ejemplo tuyo, aunque tu resumen salga mal si lo entendiste mal.
+- Haz como máximo UNA pregunta por turno y responde en 2 a 4 frases.
+- Si ya entendiste casi todo, intenta explicárselo a tu hermanito con tus palabras.
+Responde SOLO con JSON: {"reply":"lo que dices","understood":número de 0 a 100 de cuánto entiendes del tema hasta ahora,"stuck":"en pocas palabras qué te confunde, o vacío"}`;
+const tr=()=>log.map(m=>(m.r=="a"?"Adulto: ":"Lalo: ")+m.t).join("\n");
+
+async function ask(system,user,model,max){
+ const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
+  headers:{"content-type":"application/json","x-api-key":KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+  body:JSON.stringify({model,max_tokens:max,system,messages:[{role:"user",content:user}]})});
+ const j=await r.json().catch(()=>({}));
+ if(!r.ok){const e=new Error("api");e.status=r.status;throw e}
+ return(j.content||[]).filter(b=>b.type=="text").map(b=>b.text).join("")}
+function parse(t){const a=t.indexOf("{"),b=t.lastIndexOf("}");return JSON.parse(t.slice(a,b+1))}
+
+function draw(){const L=$("log");L.textContent="";
+ for(const m of log){const d=document.createElement("div"),b=document.createElement("b"),s=document.createElement("span");
+  d.className="m "+m.r;b.textContent=m.r=="a"?"Tú":"Lalo";s.textContent=m.t;d.append(b,s);L.append(d)}
+ L.scrollTop=L.scrollHeight;
+ $("mt").style.width=und+"%";$("mt").parentElement.setAttribute("aria-valuenow",und);
+ $("stuck").textContent="Lalo entiende: "+und+"%"+(stuck?". Lo que lo confunde: "+stuck:"")}
+function ui(){$("sd").disabled=busy||!KEY;$("sd").textContent=busy?"Lalo está pensando…":"Enviar";$("fin").disabled=busy||!KEY||!log.some(m=>m.r=="a");
+ $("kc").hidden=!!KEY;$("kx").hidden=!KEY}
+function fail(e){$("err").hidden=false;const s=e&&e.status;
+ $("err").textContent=s==401||s==403?"La clave no es válida o no tiene permiso. Revísala con “Cambiar clave”.":s==429?"Demasiadas peticiones seguidas. Espera un momento.":s==400?"La cuenta de la API no tiene saldo o el modelo no está disponible.":!navigator.onLine?"Sin conexión a internet.":"No pude conectar con Lalo. Intenta de nuevo."}
+
+async function send(){const v=$("in").value.trim();if(!v||busy||!KEY)return;
+ $("err").hidden=true;log.push({r:"a",t:v});$("in").value="";busy=true;draw();ui();
+ try{const o=parse(await ask(KID(topic),"Conversación hasta ahora:\n"+tr()+"\n\nResponde como Lalo al último mensaje del adulto.",M_KID,500));
+  if(typeof o.reply!="string")throw 0;
+  log.push({r:"k",t:o.reply});und=Math.max(0,Math.min(100,Math.round(+o.understood)||0));stuck=typeof o.stuck=="string"?o.stuck.trim():""}
+ catch(e){log.pop();$("in").value=v;fail(e)}
+ busy=false;draw();ui()}
+
+function fmt(t){const f=$("fb");f.textContent="";
+ for(const line of t.split(/\n+/)){if(!line.trim())continue;const p=document.createElement("p");
+  line.replace(/^#+\s*/,"").split(/\*\*/).forEach((s,i)=>{if(!s)return;if(i%2){const b=document.createElement("b");b.textContent=s;p.append(b)}else p.append(s)});f.append(p)}}
+async function finish(){if(busy||!KEY)return;busy=true;ui();$("err").hidden=true;$("fb").hidden=false;$("fb").textContent="Revisando tu explicación…";
+ try{fmt(await ask("Eres un tutor que revisa cómo un adulto le explicó un tema a Lalo, un niño de 10 años.",`Tema: “${topic}”. Conversación:\n${tr()}\n\nDa retroalimentación breve en español con estos cuatro títulos en negritas: **Lo que quedó claro**, **Lo que falló o faltó** (incluye cualquier error de contenido, corregido con precisión), **Palabras difíciles que usaste** y **Cómo lo explicaría más simple** (una analogía o ejemplo concreto). Sé honesto y específico; no halagues sin motivo. Máximo 200 palabras.`,M_FB,900))}
+ catch(e){$("fb").hidden=true;fail(e)}
+ busy=false;ui()}
+
+function start(){if(!KEY){$("ky").focus();return}const t=$("tp").value.trim();if(!t)return $("tp").focus();topic=t;und=0;stuck="";
+ log=[{r:"k",t:"¡Hola! Soy Lalo y tengo 10 años. No sé nada de “"+t+"”. ¿Me lo explicas?"}];
+ $("setup").hidden=true;$("chat").hidden=false;$("fb").hidden=true;$("err").hidden=true;draw();ui();$("in").focus()}
+$("go").onclick=start;$("tp").onkeydown=e=>{if(e.key=="Enter")start()};
+$("sd").onclick=send;$("in").onkeydown=e=>{if(e.key=="Enter"&&(e.ctrlKey||e.metaKey))send()};
+$("fin").onclick=finish;
+$("nw").onclick=()=>{$("chat").hidden=true;$("setup").hidden=false;$("tp").value="";$("in").value="";$("tp").focus()};
+$("ks").onclick=()=>{const k=$("ky").value.trim();if(!k)return;KEY=k;try{localStorage.setItem("lalo_key",k)}catch(e){}$("ky").value="";ui()};
+$("kx").onclick=()=>{KEY="";try{localStorage.removeItem("lalo_key")}catch(e){}ui();$("ky").focus()};
+
+/* Dictado por voz (si el navegador lo permite) */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+if(SR){let rec=null,on=false,base="";$("mic").hidden=false;
+ $("mic").onclick=()=>{if(on){rec.stop();return}
+  rec=new SR();rec.lang="es-MX";rec.interimResults=true;rec.continuous=true;base=$("in").value.trim();
+  rec.onresult=e=>{let t="";for(let i=0;i<e.results.length;i++)t+=e.results[i][0].transcript;$("in").value=(base+" "+t).trim()};
+  rec.onstart=()=>{on=true;$("mic").textContent="Dejar de dictar"};
+  rec.onend=()=>{on=false;$("mic").textContent="Dictar con voz"};
+  rec.onerror=()=>{on=false;$("mic").textContent="Dictar con voz"};
+  try{rec.start()}catch(e){}}}
+
+/* Instalar como app (PWA) */
+let dp=null;
+try{if("serviceWorker" in navigator&&location.protocol.startsWith("http"))navigator.serviceWorker.register("sw.js").catch(()=>{})}catch(e){}
+addEventListener("beforeinstallprompt",e=>{e.preventDefault();dp=e});
+addEventListener("appinstalled",()=>{$("in2").hidden=true;$("ih").hidden=true});
+if(matchMedia("(display-mode: standalone)").matches||navigator.standalone)$("in2").hidden=true;
+$("in2").onclick=async()=>{
+ if(dp){dp.prompt();const r=await dp.userChoice;dp=null;if(r.outcome=="accepted")$("in2").hidden=true;return}
+ $("ih").hidden=false;
+ if(/iphone|ipad|ipod/i.test(navigator.userAgent)){$("ih").innerHTML="En iPhone o iPad: toca <b>Compartir</b> y luego <b>Agregar a pantalla de inicio</b>.";return}
+ const p=[];
+ if(location.protocol!="https:"&&location.hostname!="localhost")p.push("Abre la página con https://.");
+ if(top!==self)p.push("Ábrela directamente, no dentro de otra página.");
+ try{const g=await navigator.serviceWorker.getRegistration();if(!g)p.push("El service worker (sw.js) no está activo: súbelo junto a index.html y recarga.")}catch(e){p.push("Este navegador no permite service workers aquí.")}
+ $("ih").innerHTML=p.length?"<b>Qué falta:</b><br>"+p.join("<br>"):"Todo está bien. Recarga una vez y abre el menú del navegador: debe aparecer <b>Instalar app</b>."};
+ui();
+</script>
+</body>
+</html>
